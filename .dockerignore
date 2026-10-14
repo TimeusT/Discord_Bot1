@@ -1,0 +1,11 @@
+# Keeps secrets and clutter out of the Docker image
+.env
+cookies*.txt
+.venv/
+venv/
+data/
+tests/
+**/__pycache__/
+*.egg-info/
+.pytest_cache/
+.git/

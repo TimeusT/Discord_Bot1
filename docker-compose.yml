@@ -1,0 +1,13 @@
+services:
+  placebot:
+    build: .
+    restart: unless-stopped  # starts again by itself after a crash or a server reboot
+    env_file: .env
+    volumes:
+      - placebot-data:/data
+      # Only if you use an Instagram cookies file, uncomment this and set
+      # INSTAGRAM_COOKIES_FILE=/app/cookies.txt in .env
+      # - ./cookies.txt:/app/cookies.txt:ro
+
+volumes:
+  placebot-data:

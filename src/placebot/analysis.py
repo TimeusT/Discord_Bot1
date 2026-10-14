@@ -12,7 +12,13 @@ log = logging.getLogger(__name__)
 
 _MAX_TRANSCRIPT_CHARS = 6000  # keeps long videos from costing more than they are worth
 _MAX_HIGHLIGHTS = 6
-_CATEGORY_BY_KEY = {category.value: category for category in Category}
+
+# A place always gets its best-matching category. It only gets a second one if that
+# category scored at least this much (0 = unrelated, 1 = clearly what the place is).
+# Raise it for fewer second categories, lower it for more.
+SECONDARY_CATEGORY_MIN_SCORE = 0.6
+
+_CATEGORY_KEYS = [category.value for category in Category]
 
 _SYSTEM_PROMPT = """\
 You turn Instagram travel posts into structured place records.
@@ -29,7 +35,11 @@ Rules:
   from the English name (e.g. 西安 for Xi'an), otherwise null.
 - country: English name. country_code: ISO 3166-1 alpha-2 (e.g. CN).
 - place_type: 1-4 words saying what the place is (e.g. "24 Hour Spa", "Beachfront Hotel").
-- categories: one or more of hotel, cruise, shopping, entertainment, sightseeing,
+- category_scores: score EVERY category from 0 to 1 for how well it describes the place's
+  main purpose (1 = clearly what the place is, 0 = unrelated). Be strict. Score above 0.5
+  only if most travellers would describe the place that way. Side features don't count:
+  a hotel with a spa or pool is still just a hotel, and a mall with a cinema is still
+  just shopping. Categories: hotel, cruise, shopping, entertainment, sightseeing,
   cultural_traditional.
 - highlights: 3-6 short sentences about what the place is and what it offers.
 """
@@ -52,15 +62,16 @@ _TOOL = {
                         "city_local": {"type": ["string", "null"]},
                         "country": {"type": "string"},
                         "country_code": {"type": "string"},
-                        "categories": {
-                            "type": "array",
-                            "items": {"type": "string", "enum": list(_CATEGORY_BY_KEY)},
+                        "category_scores": {
+                            "type": "object",
+                            "properties": {key: {"type": "number"} for key in _CATEGORY_KEYS},
+                            "required": _CATEGORY_KEYS,
                         },
                         "highlights": {"type": "array", "items": {"type": "string"}},
                     },
                     "required": [
                         "name", "place_type", "city", "country",
-                        "country_code", "categories", "highlights",
+                        "country_code", "category_scores", "highlights",
                     ],
                 },
             }
@@ -91,12 +102,35 @@ class PlaceAnalyzer:
 
 
 def _build_prompt(post: PostData) -> str:
-    transcript = post.transcript[:_MAX_TRANSCRIPT_CHARS] or "(no speech: image post or no audio)"
+    transcript = post.transcript[:_MAX_TRANSCRIPT_CHARS] or "(no speech: photo post or no audio)"
     return (
         f"Post by @{post.username}\n\n"
         f"<caption>\n{post.caption}\n</caption>\n\n"
         f"<transcript>\n{transcript}\n</transcript>"
     )
+
+
+def choose_categories(scores: dict) -> list[Category]:
+    """Pick the main category, plus a second one only if it is a strong match too.
+
+    The AI scores every category and this code makes the decision, so the rule can be
+    tuned (SECONDARY_CATEGORY_MIN_SCORE) without touching the AI's instructions.
+    """
+
+    def score(category: Category) -> float:
+        try:
+            return min(max(float(scores.get(category.value, 0)), 0.0), 1.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    # sorted() is stable, so equal scores keep the order of the Category list.
+    ranked = sorted(Category, key=score, reverse=True)
+    if score(ranked[0]) <= 0:
+        return []
+    chosen = [ranked[0]]
+    if score(ranked[1]) >= SECONDARY_CATEGORY_MIN_SCORE:
+        chosen.append(ranked[1])
+    return chosen
 
 
 def parse_places(data: dict, limit: int) -> list[Place]:
@@ -134,6 +168,6 @@ def _parse_place(raw: dict) -> Place:
         city_local=optional("city_local"),
         country=required("country"),
         country_code=country_code if len(country_code) == 2 and country_code.isalpha() else "",
-        categories=[_CATEGORY_BY_KEY[c] for c in raw.get("categories", []) if c in _CATEGORY_BY_KEY],
+        categories=choose_categories(raw.get("category_scores") or {}),
         highlights=highlights[:_MAX_HIGHLIGHTS],
     )

@@ -23,15 +23,31 @@ class Category(Enum):
 
 
 @dataclass(frozen=True)
+class MediaFile:
+    """A video or photo from the post, saved in a temporary folder."""
+
+    path: Path
+    is_video: bool
+    duration: float | None = None  # seconds, videos only
+
+
+@dataclass(frozen=True)
+class Attachment:
+    """A file ready to upload to Discord."""
+
+    filename: str
+    data: bytes
+
+
+@dataclass(frozen=True)
 class PostData:
     """Everything we learned from one Instagram post."""
 
     url: str
-    username: str
+    username: str  # the @handle, without the @
     caption: str
-    image_urls: list[str] = field(default_factory=list)
-    audio_path: Path | None = None  # only set for videos, used to make the transcript
-    transcript: str = ""
+    media: list[MediaFile] = field(default_factory=list)
+    transcript: str = ""  # only for videos
 
 
 @dataclass(frozen=True)
@@ -43,7 +59,7 @@ class Place:
     city: str
     country: str
     country_code: str  # two-letter code like "CN"; empty if unknown
-    categories: list[Category]
+    categories: list[Category]  # the main focus first, then at most one strong second
     highlights: list[str]  # the "What to expect" bullets
     name_local: str | None = None  # name in its original language, if different
     city_local: str | None = None  # city in its original language, if different

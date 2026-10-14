@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from src.placebot.links import BookingLink
 from src.placebot.models import Place, PostData
 
 DISCORD_MESSAGE_LIMIT = 2000
@@ -19,7 +18,7 @@ def flag_emoji(country_code: str) -> str:
     return "".join(chr(0x1F1E6 + ord(letter) - ord("A")) for letter in country_code.upper())
 
 
-def format_place(place: Place, post: PostData, link: BookingLink) -> str:
+def format_place(place: Place, post: PostData, notice: str = "") -> str:
     name = place.name
     if place.name_local and place.name_local.casefold() != place.name.casefold():
         name = f"{place.name} ({place.name_local})"
@@ -37,14 +36,18 @@ def format_place(place: Place, post: PostData, link: BookingLink) -> str:
     if place.categories:
         lines.append("## 🔷 " + "   •   ".join(c.label for c in place.categories))
     lines += [
-        f"## ℹ️ **Book at [{link.label}]({link.url})**",
         f"## 🔍 **From [{post.username}]({post.url})**",
         "## What to expect:",
     ]
 
-    # Discord rejects messages over 2000 characters, so drop the last bullets if needed.
     bullets = [f"- {text}" for text in place.highlights]
-    while bullets and len("\n".join(lines + bullets)) > DISCORD_MESSAGE_LIMIT:
+    tail = ["", notice] if notice else []
+
+    def render() -> str:
+        return "\n".join(lines + bullets + tail)
+
+    # Discord rejects messages over 2000 characters, so drop the last bullets if needed.
+    while bullets and len(render()) > DISCORD_MESSAGE_LIMIT:
         bullets.pop()
 
-    return "\n".join(lines + bullets)[:DISCORD_MESSAGE_LIMIT]
+    return render()[:DISCORD_MESSAGE_LIMIT]
