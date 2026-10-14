@@ -1,0 +1,15 @@
+# Secrets - these must never be uploaded to GitHub
+.env
+cookies*.txt
+
+# Python
+__pycache__/
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
